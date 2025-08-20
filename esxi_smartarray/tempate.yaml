@@ -1,0 +1,593 @@
+zabbix_export:
+  version: '7.2'
+  template_groups:
+    - uuid: 1d9a4a3c2884448889f4c06bd9776f47
+      name: Templates/Storage
+  templates:
+    - uuid: 60d405618ec04cefaacd96cc41646b25
+      template: 'ESXi HP SmartArray'
+      name: 'ESXi HP SmartArray'
+      groups:
+        - name: Templates/Storage
+      items:
+        - uuid: d8303c881f6a4f68a07391a0c0c4e98d
+          name: 'CPU temperature'
+          type: DEPENDENT
+          key: esxi.cpu.temp
+          value_type: FLOAT
+          units: C
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Processor\s+{#CPU}\s+[0-9]{2}-CPU\s+[0-9]+\s+[0-9.]+\s+([0-9]+)\s+degrees\s+C'
+                - \1
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ssh.run[esxi.ipmi.sdr]'
+        - uuid: b2c9054eb028437dad63c5281934e1e3
+          name: 'CPU utilization %'
+          type: DEPENDENT
+          key: esxi.cpu.util
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'CPU Utilization\s+[0-9.]+\s+([0-9]+)\s'
+                - \1
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'ssh.run[esxi.ipmi.sdr]'
+          triggers:
+            - uuid: cb031cbbacce49548d0b531bbb459684
+              expression: 'avg(/ESXi HP SmartArray/esxi.cpu.util,5m)>{$CPU_UTIL_HIGH}'
+              name: 'CPU utilization high'
+              priority: HIGH
+            - uuid: 71631708c69e4705b6d4eccfa7f8e98b
+              expression: 'avg(/ESXi HP SmartArray/esxi.cpu.util,5m)>{$CPU_UTIL_WARN} and avg(/ESXi HP SmartArray/esxi.cpu.util,5m)<={$CPU_UTIL_HIGH}'
+              name: 'CPU utilization warning'
+              priority: AVERAGE
+        - uuid: 35486de9e8e24169b492f8800e9ec9d1
+          name: 'Memory total (MB)'
+          type: DEPENDENT
+          key: esxi.mem.total_mb
+          value_type: FLOAT
+          units: MB
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var m = value.match(/memorySize\s+=\s+([0-9]+)/);
+                  if (!m) return null;
+                  return parseInt(m[1]) / 1048576;   // B → MB
+          master_item:
+            key: 'ssh.run[esxi.host.summary]'
+        - uuid: 0d0d76bfb2b54b2db7f19bc5b8e17425
+          name: 'Memory used (MB)'
+          type: DEPENDENT
+          key: esxi.mem.used_mb
+          value_type: FLOAT
+          units: MB
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'overallMemoryUsage\s+=\s+([0-9]+)'
+                - \1
+          master_item:
+            key: 'ssh.run[esxi.host.summary]'
+        - uuid: 7b3b5a597f0c41d4abca0918eb1c1f95
+          name: 'Memory used %'
+          type: CALCULATED
+          key: esxi.mem.used_pct
+          value_type: FLOAT
+          units: '%'
+          params: '(last(//esxi.mem.used_mb) * 100) / last(//esxi.mem.total_mb)'
+          triggers:
+            - uuid: dd045796aa914cfdbfd810e223ea67c3
+              expression: 'avg(/ESXi HP SmartArray/esxi.mem.used_pct,5m)>{$MEM_UTIL_HIGH}'
+              name: 'Memory utilization high'
+              priority: HIGH
+            - uuid: a9882f9c97634a2d974cc481092c713a
+              expression: 'avg(/ESXi HP SmartArray/esxi.mem.used_pct,5m)>{$MEM_UTIL_WARN} and avg(/ESXi HP SmartArray/esxi.mem.used_pct,5m)<={$MEM_UTIL_HIGH}'
+              name: 'Memory utilization warning'
+              priority: AVERAGE
+        - uuid: 35b62c19f49c4b429683e4ece874d1fe
+          name: 'Controller cache available (GB)'
+          type: DEPENDENT
+          key: smartarray.controller.cache_avail
+          value_type: FLOAT
+          units: GB
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Total Cache Memory Available:\s+([0-9.]+)'
+                - \1
+          master_item:
+            key: 'ssh.run[smartarray.ssacli.dump]'
+        - uuid: 6d6496f723a24c99abfde31cb6157e7b
+          name: 'Controller cache total (GB)'
+          type: DEPENDENT
+          key: smartarray.controller.cache_total
+          value_type: FLOAT
+          units: GB
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Total Cache Size:\s+([0-9.]+)'
+                - \1
+          master_item:
+            key: 'ssh.run[smartarray.ssacli.dump]'
+        - uuid: be9f33e739ff4840a860e7c06983f656
+          name: 'Controller cache used (GB)'
+          type: CALCULATED
+          key: smartarray.controller.cache_used
+          value_type: FLOAT
+          units: GB
+          params: 'last(//smartarray.controller.cache_total) - last(//smartarray.controller.cache_avail)'
+        - uuid: a07b0f4b4f0f49a7880b164ff5f5e314
+          name: 'Controller cache used %'
+          type: CALCULATED
+          key: smartarray.controller.cache_used_pct
+          value_type: FLOAT
+          units: '%'
+          params: '(last(//smartarray.controller.cache_used)/last(//smartarray.controller.cache_total))*100'
+        - uuid: 31a4666ae9d04fa6ba0f078235701e73
+          name: 'Controller status'
+          type: DEPENDENT
+          key: smartarray.controller.status
+          value_type: CHAR
+          valuemap:
+            name: 'SmartArray Status'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Controller Status:\s+([A-Za-z]+)'
+                - \1
+          master_item:
+            key: 'ssh.run[smartarray.ssacli.dump]'
+        - uuid: 31000176ca1040bf915bf32ed1fc1270
+          name: 'Controller temperature'
+          type: DEPENDENT
+          key: smartarray.controller.temp
+          value_type: FLOAT
+          units: C
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Controller Temperature \(C\):\s+([0-9]+)'
+                - \1
+          master_item:
+            key: 'ssh.run[smartarray.ssacli.dump]'
+        - uuid: 9e3bc7e2f4f9460a8eeb1f5e3f5a8e4a
+          name: 'ESXi Host summary'
+          type: SSH
+          key: 'ssh.run[esxi.host.summary]'
+          delay: 60s
+          history: '0'
+          value_type: TEXT
+          params: 'vim-cmd hostsvc/hostsummary'
+          username: '{$SSH_USER}'
+          password: '{$SSH_PASSWORD}'
+        - uuid: c1ff1e5dd39b4669a2c0e1db0098fe18
+          name: 'ESXi IPMI SDR dump'
+          type: SSH
+          key: 'ssh.run[esxi.ipmi.sdr]'
+          delay: 120s
+          history: '0'
+          value_type: TEXT
+          params: 'esxcli hardware ipmi sdr list'
+          username: '{$SSH_USER}'
+          password: '{$SSH_PASSWORD}'
+        - uuid: edaf15bf90044ea18dc87a96faa339b3
+          name: 'SmartArray ssacli dump'
+          type: SSH
+          key: 'ssh.run[smartarray.ssacli.dump]'
+          delay: 60s
+          history: '0'
+          value_type: TEXT
+          params: '/opt/smartstorageadmin/ssacli/bin/ssacli ctrl all show config detail'
+          username: '{$SSH_USER}'
+          password: '{$SSH_PASSWORD}'
+      discovery_rules:
+        - uuid: d21d6fd30a9847509993ae23777c5f30
+          name: 'CPU sensor discovery'
+          type: DEPENDENT
+          key: esxi.cpu.sdr.discovery
+          item_prototypes:
+            - uuid: 78a7a60ea8aa4d7eab3260a79a97bcb9
+              name: 'CPU{#CPU} temperature'
+              type: DEPENDENT
+              key: 'esxi.cpu.temp[{#CPU}]'
+              value_type: FLOAT
+              units: C
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Processor\s+{#CPU}\s+[0-9]{2}-CPU\s+[0-9]+\s+[0-9.]+\s+([0-9]+)\s+degrees\s+C'
+                    - \1
+                  error_handler: DISCARD_VALUE
+                - type: DISCARD_UNCHANGED
+              master_item:
+                key: 'ssh.run[esxi.ipmi.sdr]'
+              trigger_prototypes:
+                - uuid: 32a6d346b58041d8b1e4e1f3ce3d45e2
+                  expression: 'last(/ESXi HP SmartArray/esxi.cpu.temp[{#CPU}])>{$CPU_TEMP_HIGH}'
+                  name: 'CPU{#CPU} temperature high'
+                  priority: HIGH
+                - uuid: 6cb4f1abdc71441e984fd1f1c4f595f4
+                  expression: 'last(/ESXi HP SmartArray/esxi.cpu.temp[{#CPU}])>{$CPU_TEMP_WARN} and last(/ESXi HP SmartArray/esxi.cpu.temp[{#CPU}])<={$CPU_TEMP_HIGH}'
+                  name: 'CPU{#CPU} temperature warning'
+                  priority: AVERAGE
+            - uuid: b960b5cf45a54f13a0cf9e94c5147b4c
+              name: 'CPU{#CPU} utilization %'
+              type: DEPENDENT
+              key: 'esxi.cpu.util.pkg[{#CPU}]'
+              value_type: FLOAT
+              units: '%'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Processor\s+{#CPU}\s+CPU\s+Utilization\s+[0-9.]+\s+([0-9]+)\s'
+                    - \1
+                  error_handler: DISCARD_VALUE
+                - type: DISCARD_UNCHANGED
+              master_item:
+                key: 'ssh.run[esxi.ipmi.sdr]'
+          graph_prototypes:
+            - uuid: c647a3b570ca4c1fbcdf0d5a06513998
+              name: 'CPU{#CPU} temperature'
+              graph_items:
+                - item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'esxi.cpu.temp[{#CPU}]'
+          master_item:
+            key: 'ssh.run[esxi.ipmi.sdr]'
+          lld_macro_paths:
+            - lld_macro: '{#CPU}'
+              path: $.cpu
+            - lld_macro: '{#UTIL}'
+              path: $.util
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var map = {};                 
+                  value.split('\n').forEach(function(l){
+                    var m;
+                    if (m = l.match(/Processor\s+([0-9]+)\s+0[23]-CPU/)) {           // temp
+                        (map[m[1]] = map[m[1]] || {cpu:m[1]}).temp = 1;
+                    }
+                    if (m = l.match(/Processor\s+([0-9]+)\s+CPU Utilization/)) {
+                        (map[m[1]] = map[m[1]] || {cpu:m[1]}).util = "1";   
+                    }
+                  
+                  });
+                  return JSON.stringify(Object.values(map));
+        - uuid: 70aff68bce864f528e1c7268ca9c3fb6
+          name: 'Logical drive discovery'
+          type: DEPENDENT
+          key: smartarray.ld.discovery
+          item_prototypes:
+            - uuid: bc08d09e265840ddaa58679aa51d6177
+              name: 'LD {#LDLABEL}: free (GB)'
+              type: CALCULATED
+              key: 'smartarray.ld.free[{#LDLABEL}]'
+              value_type: FLOAT
+              units: GB
+              params: 'last(//smartarray.ld.size[{#LDLABEL}]) - last(//smartarray.ld.used[{#LDLABEL}])'
+            - uuid: 1acf213b32894031a15cf19ab684f75c
+              name: 'LD {#LDLABEL}: size (GB)'
+              type: DEPENDENT
+              key: 'smartarray.ld.size[{#LDLABEL}]'
+              value_type: FLOAT
+              units: GB
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      
+                      var lbl='{#LDLABEL}';
+                      var m=value.match(new RegExp('Logical Drive Label: '+lbl+'[\\s\\S]*?Size: ([0-9.]+) (TB|GB)'));
+                      if(!m)return null;
+                      var v=parseFloat(m[1]); if(m[2]=='TB') v*=1024; return v;
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+            - uuid: aec2a34d947845cd8cbec013d9194325
+              name: 'LD {#LDLABEL}: status'
+              type: DEPENDENT
+              key: 'smartarray.ld.status[{#LDLABEL}]'
+              value_type: CHAR
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Logical Drive Label: {#LDLABEL}[\s\S]*?Status:\s+([A-Za-z]+)'
+                    - \1
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+            - uuid: 2db9d62b1db54f81a7c23efedfa8e6b5
+              name: 'LD {#LDLABEL}: used (GB)'
+              type: DEPENDENT
+              key: 'smartarray.ld.used[{#LDLABEL}]'
+              value_type: FLOAT
+              units: GB
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Logical Drive Label: {#LDLABEL}[\s\S]*?Used Space:\s+([0-9.]+)'
+                    - \1
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+          graph_prototypes:
+            - uuid: c5d34cb0bab84b65945b782f06f7a272
+              name: 'LD {#LDLABEL}: Capacity pie'
+              type: PIE
+              graph_items:
+                - color: F63100
+                  calc_fnc: LAST
+                  item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'smartarray.ld.used[{#LDLABEL}]'
+                - sortorder: '1'
+                  color: 199C09
+                  calc_fnc: LAST
+                  item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'smartarray.ld.free[{#LDLABEL}]'
+            - uuid: a13dc321d3244876879846f27128ce84
+              name: 'LD {#LDLABEL}: Used space'
+              graph_items:
+                - color: F63100
+                  item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'smartarray.ld.used[{#LDLABEL}]'
+          master_item:
+            key: 'ssh.run[smartarray.ssacli.dump]'
+          lld_macro_paths:
+            - lld_macro: '{#LDLABEL}'
+              path: $.label
+            - lld_macro: '{#LDNUM}'
+              path: $.ldnum
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  
+                  var out=[];var ld=null;var lines=value.split('\n');
+                  for(var i=0;i<lines.length;i++){
+                     var l=lines[i];var m=l.match(/^\s*Logical Drive:\s+([0-9]+)/);
+                    if(m){ld={ldnum:m[1]};}
+                     if(ld){
+                      var lbl=l.match(/Logical Drive Label:\s+(.+)/);
+                      if(lbl){ld.label=lbl[1].trim();out.push(ld);ld=null;}
+                     }
+                  }
+                  return JSON.stringify(out);
+        - uuid: 623cd141ff214745897ce959fb9b49d4
+          name: 'Physical drive discovery'
+          type: DEPENDENT
+          key: smartarray.pd.discovery
+          item_prototypes:
+            - uuid: 1e3be7983fb54ddcb97d311ddbed488e
+              name: 'PD {#PDMODEL} {#PDSN}: capacity (GB)'
+              type: DEPENDENT
+              key: 'smartarray.pd.capacity[{#PDSN}]'
+              value_type: FLOAT
+              units: GB
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      
+                      var sn='{#PDSN}';
+                      var m=value.match(new RegExp('Serial Number: '+sn+'[\\s\\S]*?Size: ([0-9.]+) (TB|GB)'));
+                      if(!m) return null;
+                      var v=parseFloat(m[1]); if(m[2]=='TB') v*=1024; return v;
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+            - uuid: 0a1e35f23e8f46ce99ec319780592484
+              name: 'PD {#PDMODEL} {#PDSN}: status'
+              type: DEPENDENT
+              key: 'smartarray.pd.status[{#PDSN}]'
+              value_type: CHAR
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Serial Number: {#PDSN}[\s\S]*?Status:\s+([A-Za-z]+)'
+                    - \1
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+            - uuid: 2a41137c76cc41a68301a1f3ff93b6dd
+              name: 'PD {#PDMODEL} {#PDSN}: temperature'
+              type: DEPENDENT
+              key: 'smartarray.pd.temp[{#PDSN}]'
+              value_type: FLOAT
+              units: C
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Serial Number: {#PDSN}[\s\S]*?Current Temperature \(C\):\s+([0-9]+)'
+                    - \1
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+              trigger_prototypes:
+                - uuid: 5f322a7b198c4ff183c981d2cc8b83a2
+                  expression: 'last(/ESXi HP SmartArray/smartarray.pd.temp[{#PDSN}])>{$PD_TEMP_HIGH}'
+                  name: 'Disk {#PDSN}: Temperature high'
+                  priority: HIGH
+            - uuid: ac942bcca28c4ba3bff1539a1ffbf414
+              name: 'PD {#PDMODEL} {#PDSN}: usage remaining'
+              type: DEPENDENT
+              key: 'smartarray.pd.usage[{#PDSN}]'
+              value_type: FLOAT
+              units: '%'
+              preprocessing:
+                - type: REGEX
+                  parameters:
+                    - 'Serial Number: {#PDSN}[\s\S]*?Usage remaining:\s+([0-9.]+)'
+                    - \1
+              master_item:
+                key: 'ssh.run[smartarray.ssacli.dump]'
+              trigger_prototypes:
+                - uuid: ff97c49f51ba412d9b8f5d32bcf504ff
+                  expression: 'last(/ESXi HP SmartArray/smartarray.pd.usage[{#PDSN}])<{$PD_USAGE_LOW}'
+                  name: 'Disk {#PDSN}: Usage remaining low'
+                  priority: AVERAGE
+          graph_prototypes:
+            - uuid: ef72a258cef04c8498f9fe08c5187356
+              name: 'PD {#PDSN}: Capacity pie'
+              type: PIE
+              graph_items:
+                - color: F63100
+                  calc_fnc: LAST
+                  item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'smartarray.pd.capacity[{#PDSN}]'
+            - uuid: 99edb6679b784785bb4035c27d48c071
+              name: 'PD {#PDSN}: Temperature'
+              graph_items:
+                - color: 4CCFE2
+                  item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'smartarray.pd.temp[{#PDSN}]'
+            - uuid: 0651f948fc61444196c19fef1c668868
+              name: 'PD {#PDSN}: Usage remaining'
+              graph_items:
+                - color: 50A9A7
+                  item:
+                    host: 'ESXi HP SmartArray'
+                    key: 'smartarray.pd.usage[{#PDSN}]'
+          master_item:
+            key: 'ssh.run[smartarray.ssacli.dump]'
+          lld_macro_paths:
+            - lld_macro: '{#PDMODEL}'
+              path: $.model
+            - lld_macro: '{#PDNAME}'
+              path: $.name
+            - lld_macro: '{#PDSN}'
+              path: $.sn
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  
+                  var lines=value.split('\n');var out=[];var pd=null;
+                  for(var i=0;i<lines.length;i++){
+                     var l=lines[i];var m=l.match(/^\s*physicaldrive\s+([^ ]+)/);
+                    if(m){pd={name:m[1]};}
+                     if(pd){
+                      var sn=l.match(/Serial Number:\s+([A-Za-z0-9]+)/);
+                       if(sn){pd.sn=sn[1];}
+                      var model=l.match(/Model:\s+(.+)/);
+                      if(model){pd.model=model[1].trim();out.push(pd);pd=null;}
+                     }
+                  }
+                  return JSON.stringify(out);
+      macros:
+        - macro: '{$CPU_TEMP_HIGH}'
+          value: '80'
+        - macro: '{$CPU_TEMP_WARN}'
+          value: '70'
+        - macro: '{$CPU_UTIL_HIGH}'
+          value: '90'
+        - macro: '{$CPU_UTIL_WARN}'
+          value: '70'
+        - macro: '{$CTRL_TEMP_HIGH}'
+          value: '60'
+        - macro: '{$CTRL_TEMP_WARN}'
+          value: '50'
+        - macro: '{$MEM_UTIL_HIGH}'
+          value: '90'
+        - macro: '{$MEM_UTIL_WARN}'
+          value: '75'
+        - macro: '{$PD_TEMP_HIGH}'
+          value: '60'
+        - macro: '{$PD_TEMP_WARN}'
+          value: '50'
+        - macro: '{$PD_USAGE_LOW}'
+          value: '20'
+        - macro: '{$SSH_PASSWORD}'
+        - macro: '{$SSH_USER}'
+          value: root
+      dashboards:
+        - uuid: d86e378809f8483db43847d2d194201f
+          name: Dashboard
+          pages:
+            - widgets:
+                - type: graphprototype
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '7'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'ESXi HP SmartArray'
+                        name: 'PD {#PDSN}: Usage remaining'
+                    - type: STRING
+                      name: reference
+                      value: PQSFO
+                - type: graphprototype
+                  name: Temps
+                  'y': '5'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '7'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'ESXi HP SmartArray'
+                        name: 'PD {#PDSN}: Temperature'
+                    - type: STRING
+                      name: reference
+                      value: QYHNM
+      valuemaps:
+        - uuid: ecbd20ef8e2a481bbe4d71e42983c1dd
+          name: 'SmartArray Status'
+          mappings:
+            - value: OK
+              newvalue: OK
+            - value: Failed
+              newvalue: Failed
+            - value: Degraded
+              newvalue: Degraded
+  graphs:
+    - uuid: fb8b72f165fd4c37869a953f2fee70a9
+      name: 'Controller cache usage pie'
+      type: PIE
+      graph_items:
+        - color: F63100
+          calc_fnc: LAST
+          item:
+            host: 'ESXi HP SmartArray'
+            key: smartarray.controller.cache_used
+        - sortorder: '1'
+          color: 199C09
+          calc_fnc: LAST
+          item:
+            host: 'ESXi HP SmartArray'
+            key: smartarray.controller.cache_avail
+    - uuid: 0dbba3eb9cd34d3d96f12a0078db9942
+      name: 'Controller temperature'
+      graph_items:
+        - color: 199C09
+          item:
+            host: 'ESXi HP SmartArray'
+            key: smartarray.controller.temp
+    - uuid: 51263d9827b34b1da09d38ea84d0a7c9
+      name: 'CPU utilization (total)'
+      graph_items:
+        - item:
+            host: 'ESXi HP SmartArray'
+            key: esxi.cpu.util
+    - uuid: d4547bcc554d46cd804703cbe9470e1b
+      name: 'Memory used %'
+      graph_items:
+        - color: 11AADD
+          item:
+            host: 'ESXi HP SmartArray'
+            key: esxi.mem.used_pct
