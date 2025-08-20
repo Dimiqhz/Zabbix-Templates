@@ -7,7 +7,7 @@ All templates are written in **YAML** format and can be imported into Zabbix 7.x
 
 ## 📂 Templates
 
-- [ESXi HP SmartArray](./ESXi_HP_SmartArray/README_full.md)  
+- [ESXi HP SmartArray](./esxi_smartarray/README.md)  
   Monitor HP SmartArray RAID controllers, CPU, memory, physical and logical disks on ESXi hosts.  
   Includes: dependent items, discovery rules, triggers, graphs, dashboards.
 
